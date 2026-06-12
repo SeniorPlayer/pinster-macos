@@ -4,7 +4,7 @@ import SwiftUI
 class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
-    private var currentWebViewController: WebViewController?
+    private var webViewControllers: [UUID: WebViewController] = [:]
     private var currentSite: PinnedSite?
     private var clickOutsideMonitor: Any?
     private var settingsWindow: NSWindow?
@@ -57,6 +57,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         rebuildMenu()
         HotkeyManager.shared.reregisterAll()
         BubbleManager.shared.showBubblesForSites()
+
+        // Clean up webview controllers for removed sites
+        let currentSiteIds = Set(SettingsStore.shared.pinnedSites.map { $0.id })
+        let removedIds = webViewControllers.keys.filter { !currentSiteIds.contains($0) }
+        for id in removedIds {
+            webViewControllers.removeValue(forKey: id)
+        }
     }
 
     // MARK: - Status Item & Menu
@@ -246,49 +253,70 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
             // Reset to default icon when switching sites
             statusItem.button?.image = defaultMenuBarIcon
-            currentWebViewController?.loadSite(site)
-            popover.contentSize = site.windowSize
+
+            // Set currentSite first, so favicon callback can check it
             currentSite = site
+
+            // Use the webview for the new site
+            let webViewController = getOrCreateWebViewController(for: site)
+            popover.contentViewController = webViewController
+            popover.contentSize = site.windowSize
+
+            // Focus the webview after a short delay for smoother UX
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                webViewController.makeWebViewFirstResponder()
+            }
             return
         }
 
         // Reset to default icon when opening popover
         statusItem.button?.image = defaultMenuBarIcon
 
-        if currentWebViewController == nil {
-            currentWebViewController = WebViewController()
-            currentWebViewController?.onResize = { [weak self] newSize in
-                self?.popover.contentSize = newSize
-                if let siteId = self?.currentSite?.id {
-                    SettingsStore.shared.updateSiteSize(id: siteId, size: newSize)
-                }
-            }
-            currentWebViewController?.onFaviconLoaded = { [weak self] favicon in
-                guard let self = self, self.popover.isShown else { return }
-                if let favicon = favicon {
-                    self.statusItem.button?.image = favicon
-                }
-            }
-        }
-
+        // Set currentSite first, so favicon callback can check it
         currentSite = site
-        currentWebViewController?.loadSite(site)
-        popover.contentViewController = currentWebViewController
+
+        let webViewController = getOrCreateWebViewController(for: site)
+        popover.contentViewController = webViewController
         popover.contentSize = site.windowSize
 
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         NSApp.activate(ignoringOtherApps: true)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.currentWebViewController?.makeWebViewFirstResponder()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            webViewController.makeWebViewFirstResponder()
         }
 
         startClickOutsideMonitor()
     }
 
+    private func getOrCreateWebViewController(for site: PinnedSite) -> WebViewController {
+        if let existing = webViewControllers[site.id] {
+            return existing
+        }
+
+        let webViewController = WebViewController()
+        webViewController.loadSite(site)
+
+        webViewController.onResize = { [weak self] newSize in
+            self?.popover.contentSize = newSize
+            SettingsStore.shared.updateSiteSize(id: site.id, size: newSize)
+        }
+
+        webViewController.onFaviconLoaded = { [weak self] favicon in
+            guard let self = self, self.currentSite?.id == site.id, self.popover.isShown else { return }
+            if let favicon = favicon {
+                self.statusItem.button?.image = favicon
+            }
+        }
+
+        webViewControllers[site.id] = webViewController
+        return webViewController
+    }
+
     func popoverDidClose(_ notification: Notification) {
         stopClickOutsideMonitor()
         statusItem.button?.image = defaultMenuBarIcon
+        currentSite = nil
     }
 
     private func startClickOutsideMonitor() {

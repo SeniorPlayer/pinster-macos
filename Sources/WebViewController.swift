@@ -442,6 +442,14 @@ class WebViewController: NSViewController, WKUIDelegate, WKNavigationDelegate {
             }.resume()
         }
     }
+
+    deinit {
+        // Stop loading and clean up webview
+        webView.stopLoading()
+        webView.uiDelegate = nil
+        webView.navigationDelegate = nil
+        webView.configuration.userContentController.removeAllUserScripts()
+    }
 }
 
 // MARK: - Color Extensions
