@@ -255,7 +255,7 @@ class WebViewController: NSViewController, WKUIDelegate, WKNavigationDelegate {
         // Ensure view is loaded
         _ = self.view
 
-        let newHost = url.host
+        let newHost = "\(url.scheme ?? "")://\(url.host ?? "")\(url.port.map { ":\($0)" } ?? "")"
 
         // Update user agent
         webView.customUserAgent = site.userAgent
