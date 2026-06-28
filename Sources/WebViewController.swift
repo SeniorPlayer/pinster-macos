@@ -185,6 +185,14 @@ class WebViewController: NSViewController, WKUIDelegate, WKNavigationDelegate {
                 stopScrolling();
             }
         }, true);
+
+        window.addEventListener('mouseup', function(e) {
+            if (e.button === 3) {
+                window.history.back();
+            } else if (e.button === 4) {
+                window.history.forward();
+            }
+        });
     })();
     """
 
