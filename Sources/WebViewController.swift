@@ -204,6 +204,7 @@ class WebViewController: NSViewController, WKUIDelegate, WKNavigationDelegate {
         webView.uiDelegate = self
         webView.navigationDelegate = self
         webView.allowsMagnification = true
+        webView.allowsBackForwardNavigationGestures = true
         containerView.addSubview(webView)
 
         loadingOverlay = NSView(frame: containerView.bounds)
